@@ -9,9 +9,11 @@ import {
   Text,
   TextInput,
   View,
+  Image,
 } from "react-native";
 import { StatusBar } from "expo-status-bar";
 import { router } from "expo-router";
+import * as ImagePicker from "expo-image-picker";
 import { useState } from "react";
 import { API_BASE_URL } from "../utils/api";
 
@@ -26,7 +28,32 @@ export default function RegisterScreen() {
   const [designation, setDesignation] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [profilePhoto, setProfilePhoto] =
+    useState<ImagePicker.ImagePickerAsset | null>(null);
   const [loading, setLoading] = useState(false);
+
+  const handlePickProfilePhoto = async () => {
+    const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
+
+    if (!permission.granted) {
+      Alert.alert(
+        "Permission Required",
+        "Please allow photo library access to select your profile photo.",
+      );
+      return;
+    }
+
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ["images"],
+      allowsEditing: true,
+      aspect: [1, 1],
+      quality: 0.85,
+    });
+
+    if (!result.canceled && result.assets.length > 0) {
+      setProfilePhoto(result.assets[0]);
+    }
+  };
 
   const handleRegister = async () => {
     const cleanName = name.trim();
@@ -62,6 +89,14 @@ export default function RegisterScreen() {
       formData.append("designation", designation.trim());
       formData.append("email", cleanEmail);
       formData.append("password", password);
+
+      if (profilePhoto) {
+        formData.append("profile_photo", {
+          uri: profilePhoto.uri,
+          name: profilePhoto.fileName ?? "profile-photo.jpg",
+          type: profilePhoto.mimeType ?? "image/jpeg",
+        } as any);
+      }
 
       const response = await fetch(`${API_BASE_URL}/auth/register`, {
         method: "POST",
@@ -127,6 +162,32 @@ export default function RegisterScreen() {
 
           <Text style={styles.subtitle}>
             Create your account to collect eye images
+          </Text>
+
+          <Text style={styles.label}>Profile Photo</Text>
+
+          <Pressable
+            style={styles.profilePhotoPicker}
+            onPress={handlePickProfilePhoto}
+            disabled={loading}
+          >
+            {profilePhoto ? (
+              <Image
+                source={{ uri: profilePhoto.uri }}
+                style={styles.profilePhoto}
+              />
+            ) : (
+              <>
+                <Text style={styles.profilePhotoIcon}>+</Text>
+                <Text style={styles.profilePhotoText}>
+                  Select Profile Photo
+                </Text>
+              </>
+            )}
+          </Pressable>
+
+          <Text style={styles.profilePhotoHint}>
+            Tap to select a photo from your phone
           </Text>
 
           <Text style={styles.label}>Name *</Text>
@@ -309,6 +370,43 @@ const styles = StyleSheet.create({
     color: "#0F172A",
     marginBottom: 16,
     backgroundColor: "#FFFFFF",
+  },
+  profilePhotoPicker: {
+    width: 120,
+    height: 120,
+    borderRadius: 60,
+    borderWidth: 2,
+    borderColor: "#CBD5E1",
+    borderStyle: "dashed",
+    alignSelf: "center",
+    alignItems: "center",
+    justifyContent: "center",
+    overflow: "hidden",
+    backgroundColor: "#F8FAFC",
+    marginBottom: 8,
+  },
+  profilePhoto: {
+    width: "100%",
+    height: "100%",
+  },
+  profilePhotoIcon: {
+    fontSize: 32,
+    lineHeight: 34,
+    color: "#2563EB",
+    fontWeight: "300",
+  },
+  profilePhotoText: {
+    marginTop: 4,
+    fontSize: 12,
+    fontWeight: "600",
+    color: "#2563EB",
+    textAlign: "center",
+  },
+  profilePhotoHint: {
+    marginBottom: 18,
+    fontSize: 12,
+    color: "#64748B",
+    textAlign: "center",
   },
   roleNotice: {
     backgroundColor: "#EFF6FF",

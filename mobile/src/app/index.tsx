@@ -52,6 +52,7 @@ interface AdminDoctor {
   designation: string | null;
   created_at: string;
   is_active: boolean;
+  profile_photo_url: string | null;
   total_images: number;
   disease_counts: {
     conjunctivitis: number;
@@ -83,6 +84,7 @@ interface CurrentUser {
   name: string;
   email: string;
   role: string;
+  profile_photo_url: string | null;
 }
 
 export default function HomeScreen() {
@@ -396,12 +398,21 @@ function DoctorHome({
             </Text>
           </View>
 
-          <Pressable
-            style={styles.profileButton}
-            onPress={() => router.push("/login")}
-          >
-            <Ionicons name="person-outline" size={22} color="#1F2937" />
-          </Pressable>
+          <View style={styles.profilePhotoButton}>
+            {currentUser?.profile_photo_url ? (
+              <Image
+                source={{
+                  uri: `${API_BASE_URL}${currentUser.profile_photo_url}`,
+                  headers: {
+                    Authorization: `Bearer ${accessToken}`,
+                  },
+                }}
+                style={styles.headerProfilePhoto}
+              />
+            ) : (
+              <Ionicons name="person-outline" size={22} color="#1F2937" />
+            )}
+          </View>
 
           <Pressable
             style={styles.logoutIconButton}
@@ -787,7 +798,20 @@ function AdminDashboardView({
               >
                 <View style={styles.doctorHeader}>
                   <View style={styles.doctorAvatar}>
-                    <Ionicons name="person-outline" size={24} color="#2563EB" />
+                    {doctor.profile_photo_url ? (
+                      <Image
+                        source={{
+                          uri: `${API_BASE_URL}${doctor.profile_photo_url}`,
+                        }}
+                        style={styles.doctorProfilePhoto}
+                      />
+                    ) : (
+                      <Ionicons
+                        name="person-outline"
+                        size={24}
+                        color="#2563EB"
+                      />
+                    )}
                   </View>
 
                   <View style={styles.doctorIdentity}>
@@ -937,7 +961,7 @@ const styles = StyleSheet.create({
     zIndex: 10,
   },
 
-  profileButton: {
+  profilePhotoButton: {
     width: 44,
     height: 44,
     borderRadius: 22,
@@ -946,6 +970,12 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     borderWidth: 1,
     borderColor: "#E2E8F0",
+    overflow: "hidden",
+  },
+
+  headerProfilePhoto: {
+    width: "100%",
+    height: "100%",
   },
 
   adminBadge: {
@@ -1276,6 +1306,11 @@ const styles = StyleSheet.create({
 
   doctorIdentity: {
     flex: 1,
+  },
+
+  doctorProfilePhoto: {
+    width: "100%",
+    height: "100%",
   },
 
   doctorName: {

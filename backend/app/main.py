@@ -94,6 +94,11 @@ def login(
             "name": doctor.name,
             "email": doctor.email,
             "role": doctor.role,
+            "profile_photo_url": (
+                f"/doctors/{doctor.doctor_id}/profile-photo"
+                if doctor.profile_photo
+                else None
+            ),
         },
     }
 
@@ -108,6 +113,7 @@ def register(
     designation: str | None = Form(None),
     email: str = Form(...),
     password: str = Form(...),
+    profile_photo: UploadFile | None = File(None),
     db: Session = Depends(get_db),
 ):
     clean_name = name.strip()
@@ -143,6 +149,28 @@ def register(
             detail="An account with this email already exists",
         )
 
+    profile_photo_data = None
+    profile_photo_content_type = None
+
+    if profile_photo is not None:
+        profile_photo_data = profile_photo.read()
+
+        if not profile_photo_data:
+            raise HTTPException(
+                status_code=400,
+                detail="Profile photo is empty",
+            )
+
+        if not profile_photo.content_type or not profile_photo.content_type.startswith(
+            "image/"
+        ):
+            raise HTTPException(
+                status_code=400,
+                detail="Profile photo must be an image",
+            )
+
+        profile_photo_content_type = profile_photo.content_type
+
     new_doctor = Doctor(
         name=clean_name,
         hospital=hospital.strip() if hospital else None,
@@ -161,6 +189,8 @@ def register(
         email=clean_email,
         password_hash=hash_password(password),
         role="doctor",
+        profile_photo=profile_photo_data,
+        profile_photo_content_type=profile_photo_content_type,
         is_active=True,
     )
 
@@ -185,6 +215,11 @@ def register(
             "name": new_doctor.name,
             "email": new_doctor.email,
             "role": new_doctor.role,
+            "profile_photo_url": (
+                f"/doctors/{new_doctor.doctor_id}/profile-photo"
+                if new_doctor.profile_photo
+                else None
+            ),
         },
     }
 
@@ -198,7 +233,50 @@ def get_me(
         "name": current_user.name,
         "email": current_user.email,
         "role": current_user.role,
+        "profile_photo_url": (
+            f"/doctors/{current_user.doctor_id}/profile-photo"
+            if current_user.profile_photo
+            else None
+        ),
     }
+
+
+# ============================================================
+# PROFILE PHOTO
+# ============================================================
+
+@app.get("/doctors/{doctor_id}/profile-photo")
+def get_profile_photo(
+    doctor_id: int,
+    current_user: Doctor = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    if current_user.role != "admin" and current_user.doctor_id != doctor_id:
+        raise HTTPException(
+            status_code=403,
+            detail="You are not allowed to view this profile photo",
+        )
+
+    doctor = db.scalar(
+        select(Doctor).where(Doctor.doctor_id == doctor_id)
+    )
+
+    if doctor is None:
+        raise HTTPException(
+            status_code=404,
+            detail="Doctor not found",
+        )
+
+    if not doctor.profile_photo or not doctor.profile_photo_content_type:
+        raise HTTPException(
+            status_code=404,
+            detail="Profile photo not found",
+        )
+
+    return Response(
+        content=doctor.profile_photo,
+        media_type=doctor.profile_photo_content_type,
+    )
 
 
 # ============================================================
@@ -470,6 +548,11 @@ def get_admin_dashboard(
             "experience": doctor.experience,
             "qualification": doctor.qualification,
             "designation": doctor.designation,
+            "profile_photo_url": (
+                f"/doctors/{doctor.doctor_id}/profile-photo"
+                if doctor.profile_photo
+                else None
+            ),
             "created_at": doctor.created_at,
             "is_active": doctor.is_active,
             "total_images": total_doctor_images,

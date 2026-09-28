@@ -72,6 +72,16 @@ class Doctor(Base):
         default="doctor",
     )
 
+    profile_photo: Mapped[bytes | None] = mapped_column(
+        LargeBinary,
+        nullable=True,
+    )
+
+    profile_photo_content_type: Mapped[str | None] = mapped_column(
+        String(100),
+        nullable=True,
+    )
+
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         server_default=func.now(),
