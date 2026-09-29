@@ -1,7 +1,7 @@
 alembic==1.20.0
 fastapi[standard]==0.141.1
 psycopg==3.3.6
-pwdlib==0.3.1
+pwdlib[argon2]==0.3.1
 PyJWT==2.15.0
 python-dotenv==1.2.3
 python-multipart==0.0.32
