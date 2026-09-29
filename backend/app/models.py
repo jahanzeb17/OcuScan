@@ -129,9 +129,14 @@ class Image(Base):
         nullable=False,
     )
 
-    image_data: Mapped[bytes] = mapped_column(
+    image_data: Mapped[bytes | None] = mapped_column(
         LargeBinary,
-        nullable=False,
+        nullable=True,
+    )
+
+    image_path: Mapped[str | None] = mapped_column(
+        String(500),
+        nullable=True,
     )
 
     content_type: Mapped[str] = mapped_column(

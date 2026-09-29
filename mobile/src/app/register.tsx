@@ -16,6 +16,8 @@ import { router } from "expo-router";
 import * as ImagePicker from "expo-image-picker";
 import { useState } from "react";
 import { API_BASE_URL } from "../utils/api";
+import { File } from "expo-file-system";
+import { fetch as expoFetch } from "expo/fetch";
 
 // const API_BASE_URL = "http://172.16.2.22:8000";
 
@@ -91,14 +93,12 @@ export default function RegisterScreen() {
       formData.append("password", password);
 
       if (profilePhoto) {
-        formData.append("profile_photo", {
-          uri: profilePhoto.uri,
-          name: profilePhoto.fileName ?? "profile-photo.jpg",
-          type: profilePhoto.mimeType ?? "image/jpeg",
-        } as any);
+        const profilePhotoFile = new File(profilePhoto.uri);
+
+        formData.append("profile_photo", profilePhotoFile);
       }
 
-      const response = await fetch(`${API_BASE_URL}/auth/register`, {
+      const response = await expoFetch(`${API_BASE_URL}/auth/register`, {
         method: "POST",
         body: formData,
       });

@@ -22,8 +22,31 @@ from app.database import get_db
 from app.dependencies import get_current_user
 from app.models import Doctor, Image
 
+import os
+from pathlib import Path
+from uuid import uuid4
+
+from supabase import create_client
 
 app = FastAPI(title="OcuScan API")
+
+STORAGE_ROOT = Path(__file__).resolve().parent.parent / "storage"
+EYE_IMAGES_STORAGE = STORAGE_ROOT / "eye-images"
+EYE_IMAGES_STORAGE.mkdir(parents=True, exist_ok=True)
+
+SUPABASE_URL = os.getenv("SUPABASE_URL")
+SUPABASE_SECRET_KEY = os.getenv("SUPABASE_SECRET_KEY")
+SUPABASE_EYE_IMAGES_BUCKET = "eye-images"
+
+if not SUPABASE_URL or not SUPABASE_SECRET_KEY:
+    raise RuntimeError(
+        "SUPABASE_URL and SUPABASE_SECRET_KEY must be configured"
+    )
+
+supabase = create_client(
+    SUPABASE_URL,
+    SUPABASE_SECRET_KEY,
+)
 
 
 app.add_middleware(
@@ -104,7 +127,7 @@ def login(
 
 
 @app.post("/auth/register")
-def register(
+async def register(
     name: str = Form(...),
     hospital: str | None = Form(None),
     city: str | None = Form(None),
@@ -153,7 +176,7 @@ def register(
     profile_photo_content_type = None
 
     if profile_photo is not None:
-        profile_photo_data = profile_photo.read()
+        profile_photo_data = await profile_photo.read()
 
         if not profile_photo_data:
             raise HTTPException(
@@ -248,15 +271,8 @@ def get_me(
 @app.get("/doctors/{doctor_id}/profile-photo")
 def get_profile_photo(
     doctor_id: int,
-    current_user: Doctor = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    if current_user.role != "admin" and current_user.doctor_id != doctor_id:
-        raise HTTPException(
-            status_code=403,
-            detail="You are not allowed to view this profile photo",
-        )
-
     doctor = db.scalar(
         select(Doctor).where(Doctor.doctor_id == doctor_id)
     )
@@ -325,10 +341,36 @@ async def upload_image(
             detail="Image content type is missing",
         )
 
+    storage_filename = f"{uuid4().hex}{Path(filename).suffix.lower()}"
+    image_path = (
+        f"eye-images/{current_user.doctor_id}/{storage_filename}"
+    )
+
+    try:
+        supabase.storage.from_(
+            SUPABASE_EYE_IMAGES_BUCKET
+        ).upload(
+            image_path,
+            contents,
+            file_options={
+                "content-type": image.content_type,
+                "upsert": "false",
+            },
+        )
+
+    except Exception as exc:
+        print("Supabase Storage upload failed:", exc)
+
+        raise HTTPException(
+            status_code=500,
+            detail="Failed to store image file",
+        )
+
     new_image = Image(
         doctor_id=current_user.doctor_id,
         filename=filename,
-        image_data=contents,
+        image_data=None,
+        image_path=image_path,
         content_type=image.content_type,
         disease=disease,
         subtype=subtype,
@@ -344,14 +386,24 @@ async def upload_image(
     except Exception:
         db.rollback()
 
+        try:
+            supabase.storage.from_(
+                SUPABASE_EYE_IMAGES_BUCKET
+            ).remove([image_path])
+        except Exception as cleanup_exc:
+            print(
+                "Supabase Storage cleanup failed:",
+                cleanup_exc,
+            )
+
         raise HTTPException(
             status_code=500,
-            detail="Failed to store image in database",
+            detail="Failed to store image metadata",
         )
 
     return {
         "success": True,
-        "message": "Image stored successfully in PostgreSQL",
+        "message": "Image stored successfully",
         "image_id": new_image.image_id,
         "doctor_id": current_user.doctor_id,
         "filename": new_image.filename,
@@ -406,8 +458,17 @@ def get_my_images(
     current_user: Doctor = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    images = db.scalars(
-        select(Image)
+    images = db.execute(
+        select(
+            Image.image_id,
+            Image.filename,
+            Image.disease,
+            Image.subtype,
+            Image.width,
+            Image.height,
+            Image.content_type,
+            Image.created_at,
+        )
         .where(
             Image.doctor_id == current_user.doctor_id
         )
@@ -604,7 +665,40 @@ def get_image(
             detail="Image not found",
         )
 
-    return Response(
-        content=image.image_data,
-        media_type=image.content_type,
+    if image.image_path:
+        try:
+            contents = supabase.storage.from_(
+                SUPABASE_EYE_IMAGES_BUCKET
+            ).download(image.image_path)
+
+            return Response(
+                content=contents,
+                media_type=image.content_type,
+            )
+
+        except Exception as exc:
+            print(
+                "Supabase Storage download failed:",
+                exc,
+            )
+
+        # Keep legacy local-storage images accessible
+        # during the storage migration.
+        storage_file = STORAGE_ROOT / image.image_path
+
+        if storage_file.is_file():
+            return Response(
+                content=storage_file.read_bytes(),
+                media_type=image.content_type,
+            )
+
+    if image.image_data:
+        return Response(
+            content=image.image_data,
+            media_type=image.content_type,
+        )
+
+    raise HTTPException(
+        status_code=404,
+        detail="Image data not found",
     )
